@@ -63,6 +63,22 @@ def _parser() -> argparse.ArgumentParser:
     batch.add_argument(
         "source", help="JSON file path, or '-' to read standard input"
     )
+
+    prepare = commands.add_parser(
+        "prepare-screenshot-import",
+        help="OCR transaction screenshots into reviewable import JSON",
+    )
+    prepare.add_argument(
+        "--input-dir",
+        default="data/screenshots",
+        help="folder with PNG screenshots (default: data/screenshots)",
+    )
+    prepare.add_argument(
+        "--output-dir",
+        default=".data/screenshot-import",
+        help="base folder for run artifacts "
+        "(default: .data/screenshot-import)",
+    )
     return parser
 
 
@@ -382,8 +398,56 @@ def _dispatch(args: argparse.Namespace, ledger: Ledger) -> int:
     raise InputError(f"unsupported command: {args.command}")
 
 
+def _prompt_mapping(label: str) -> str | None:
+    try:
+        return _read_prompt(label) or None
+    except InputError:
+        return None
+
+
+def _prepare_screenshots(args: argparse.Namespace) -> int:
+    from investment_ledger.ocr import (
+        OcrError,
+        OcrUnavailable,
+        TesseractEngine,
+    )
+    from investment_ledger.prepare_import import prepare_import
+
+    try:
+        engine = TesseractEngine()
+    except OcrUnavailable as exc:
+        _emit_error(str(exc), args.format, code="operational_error")
+        return EXIT_OPERATIONAL_ERROR
+    prompt = _prompt_mapping if sys.stdin.isatty() else None
+    try:
+        outcome = prepare_import(
+            Path(args.input_dir),
+            Path(args.output_dir),
+            engine,
+            prompt=prompt,
+        )
+    except (OcrError, OSError) as exc:
+        _emit_error(str(exc), args.format, code="operational_error")
+        return EXIT_OPERATIONAL_ERROR
+
+    summary = outcome.summary()
+    if args.format == "json":
+        _emit(summary, args.format)
+    else:
+        print(f"Screenshot preparation run: {summary['run_dir']}")
+        for status, count in sorted(summary["counts"].items()):
+            print(f"  {status}: {count}")
+        print(f"Transactions: {summary['transactions_file']}")
+        print(f"Report: {summary['report_file']}")
+        print("Review the JSON, then import it with:")
+        print(f"  {summary['import_command']}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "prepare-screenshot-import":
+        return _prepare_screenshots(args)
     database = args.db or os.environ.get(ENV_DATABASE) or str(DEFAULT_DATABASE)
     try:
         with Ledger(database) as ledger:
