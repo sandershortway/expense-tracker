@@ -343,3 +343,94 @@ def test_environment_database_override(monkeypatch, capsys, tmp_path):
     assert code == 0
     assert db_path.exists()
     assert json.loads(capsys.readouterr().out)["transactions"] == []
+
+
+def test_prepare_command_runs_without_ledger(monkeypatch, capsys, tmp_path):
+    import investment_ledger.ocr as ocr_module
+    import investment_ledger.prepare_import as prepare_module
+    from investment_ledger.prepare_import import PrepareOutcome
+
+    monkeypatch.setattr(ocr_module, "TesseractEngine", lambda: object())
+    run_dir = tmp_path / "out" / "run-test"
+    outcome = PrepareOutcome(
+        run_dir=run_dir,
+        transactions_path=run_dir / "transactions.json",
+        report_path=run_dir / "report.json",
+        transactions=[],
+        report=[],
+    )
+    monkeypatch.setattr(
+        prepare_module, "prepare_import", lambda *a, **k: outcome
+    )
+
+    db_path = tmp_path / "should_not_exist.sqlite3"
+    code, captured = run_cli(
+        monkeypatch,
+        capsys,
+        db_path,
+        "prepare-screenshot-import",
+        "--input-dir",
+        str(tmp_path),
+        "--output-dir",
+        str(tmp_path / "out"),
+    )
+
+    assert code == 0
+    assert "uv run python -m investment_ledger" in captured.out
+    assert "import" in captured.out
+    assert not db_path.exists()
+
+
+def test_prepare_command_json_output(monkeypatch, capsys, tmp_path):
+    import investment_ledger.ocr as ocr_module
+    import investment_ledger.prepare_import as prepare_module
+    from investment_ledger.prepare_import import PrepareOutcome
+
+    monkeypatch.setattr(ocr_module, "TesseractEngine", lambda: object())
+    run_dir = tmp_path / "out" / "run-json"
+    outcome = PrepareOutcome(
+        run_dir=run_dir,
+        transactions_path=run_dir / "transactions.json",
+        report_path=run_dir / "report.json",
+        transactions=[{"side": "buy"}],
+        report=[{"source": "x.png", "status": "ready"}],
+    )
+    monkeypatch.setattr(
+        prepare_module, "prepare_import", lambda *a, **k: outcome
+    )
+
+    code, captured = run_cli(
+        monkeypatch,
+        capsys,
+        tmp_path / "db.sqlite3",
+        "--format",
+        "json",
+        "prepare-screenshot-import",
+    )
+
+    assert code == 0
+    summary = json.loads(captured.out)
+    assert summary["counts"] == {"ready": 1}
+    assert summary["import_command"].startswith("uv run python")
+
+
+def test_prepare_command_ocr_unavailable(monkeypatch, capsys, tmp_path):
+    import investment_ledger.ocr as ocr_module
+    from investment_ledger.ocr import OcrUnavailable
+
+    def _unavailable():
+        raise OcrUnavailable("tesseract missing")
+
+    monkeypatch.setattr(ocr_module, "TesseractEngine", _unavailable)
+
+    code, captured = run_cli(
+        monkeypatch,
+        capsys,
+        tmp_path / "db.sqlite3",
+        "--format",
+        "json",
+        "prepare-screenshot-import",
+    )
+
+    assert code == 1
+    assert "tesseract missing" in captured.out
