@@ -240,9 +240,14 @@ the investment ledger.
 
 ## Open questions
 
-- [ ] Which local Python OCR package provides acceptable Dutch OCR accuracy on
-  this screen format while installing under Python 3.15 through `uv`? Resolve
-  this in implementation commit 1 before selecting the dependency.
-- [ ] What confidence threshold should gate import readiness for the selected
-  backend? Calibrate against generated/sanitized fixtures and the opt-in manual
-  sample check; document the selected value before release.
+- [x] Which local Python OCR package provides acceptable Dutch OCR accuracy on
+  this screen format while installing under Python 3.15 through `uv`?
+  **Resolved:** `pytesseract` (pure-Python wrapper) plus the local Tesseract 5
+  binary with the `nld` traineddata file. `pytesseract` and `pillow` install
+  cleanly under Python 3.15 via `uv`; inference is local and CPU-only.
+- [x] What confidence threshold should gate import readiness for the selected
+  backend? **Resolved:** Tesseract reports word confidence 0-100. Every
+  template token used for a required value must score at least 45; the
+  superscript cents pass must return exactly two digits via a digit whitelist;
+  and the derived-quantity reconciliation (requirement 6) remains the
+  authoritative check before a row may be imported.
