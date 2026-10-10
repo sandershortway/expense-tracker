@@ -44,7 +44,8 @@ Each commit runs, in order:
 1. **ruff format** — reformats staged Python files. If formatting changes a
    file, the commit is blocked until the changes are re-staged.
 2. **ruff check** — lints staged Python files.
-3. **pytest** — runs the full test suite on every commit.
+3. **pytest** — runs the full test suite on every commit. An empty suite
+   (no tests collected) is treated as passing until real tests are added.
 
 Hooks invoke `uv run`, so they use the same locked tool versions as manual
 commands.

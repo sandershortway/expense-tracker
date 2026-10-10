@@ -13,7 +13,7 @@ repos:
         types: [python]
       - id: pytest
         name: pytest
-        entry: uv run pytest
+        entry: sh -c "uv run pytest || [ $? -eq 5 ]"
         language: system
         always_run: true
         pass_filenames: false
