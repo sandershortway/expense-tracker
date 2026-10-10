@@ -14,3 +14,12 @@ dev = [
 
 [tool.uv]
 package = false
+
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "UP", "W"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
