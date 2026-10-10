@@ -1,0 +1,1 @@
+"""Local investment transaction ledger."""
