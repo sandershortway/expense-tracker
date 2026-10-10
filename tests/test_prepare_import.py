@@ -208,3 +208,150 @@ def test_empty_input_produces_empty_artifacts(tmp_path) -> None:
     assert json.loads(outcome.report_path.read_text()) == []
     assert outcome.counts == {}
     assert isinstance(outcome, PrepareOutcome)
+
+
+def test_purchases_move_to_done_dividends_rename(tmp_path) -> None:
+    input_dir = tmp_path / "screens"
+    input_dir.mkdir()
+    _touch(input_dir, "buy1.png", "buy2.png", "div1.png", "div2.png")
+    results = {
+        "buy1.png": _purchase(),
+        "buy2.png": _purchase(),
+        "div1.png": _dividend(),
+        "div2.png": _dividend(),
+    }
+    prompt, _ = _prompt_for()
+    outcome = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        prompt=prompt,
+        parse_fn=_parser(results),
+    )
+
+    done = input_dir / "done"
+    assert (done / "buy1.png").is_file()
+    assert (done / "buy2.png").is_file()
+    assert (input_dir / "dividend_NVIDIA_001.png").is_file()
+    assert (input_dir / "dividend_NVIDIA_002.png").is_file()
+    assert not (input_dir / "buy1.png").exists()
+    assert not (input_dir / "div1.png").exists()
+
+    report = {e["source"]: e for e in outcome.report}
+    assert report["buy1.png"]["destination"].endswith("buy1.png")
+    assert report["div1.png"]["destination"] == "dividend_NVIDIA_001.png"
+
+
+def test_dividend_sequence_continues_past_existing(tmp_path) -> None:
+    input_dir = tmp_path / "screens"
+    input_dir.mkdir()
+    _touch(
+        input_dir,
+        "div.png",
+        "dividend_NVIDIA_001.png",
+        "dividend_NVIDIA_002.png",
+        "etf.png",
+    )
+    results = {
+        "div.png": _dividend(),
+        "etf.png": _dividend("S&P 500 Technology"),
+    }
+    outcome = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        parse_fn=_parser(results),
+    )
+    assert (input_dir / "dividend_NVIDIA_003.png").is_file()
+    assert (input_dir / "dividend_S_P_500_TECHNOLOGY_001.png").is_file()
+    assert outcome.renamed["div.png"] == "dividend_NVIDIA_003.png"
+
+
+def test_done_collision_uses_unique_name(tmp_path) -> None:
+    input_dir = tmp_path / "screens"
+    (input_dir / "done").mkdir(parents=True)
+    _touch(input_dir, "buy.png")
+    _touch(input_dir / "done", "buy.png")
+    outcome = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        prompt=_prompt_for()[0],
+        parse_fn=_parser({"buy.png": _purchase()}),
+    )
+    assert (input_dir / "done" / "buy_1.png").is_file()
+    assert (input_dir / "done" / "buy.png").read_bytes() == b"png"
+    assert outcome.moved["buy.png"].endswith("buy_1.png")
+
+
+def test_move_failure_leaves_source_and_reports(tmp_path, monkeypatch) -> None:
+    import investment_ledger.prepare_import as prepare_module
+
+    input_dir = tmp_path / "screens"
+    input_dir.mkdir()
+    _touch(input_dir, "buy.png")
+
+    def _failing(directory: Path, name: str) -> Path:
+        raise OSError("simulated move failure")
+
+    monkeypatch.setattr(prepare_module, "_unique_destination", _failing)
+    outcome = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        prompt=_prompt_for()[0],
+        parse_fn=_parser({"buy.png": _purchase()}),
+    )
+    assert (input_dir / "buy.png").is_file()
+    entry = outcome.report[0]
+    assert entry["status"] == "ready"
+    assert "move_error" in entry
+    assert json.loads(outcome.transactions_path.read_text())
+
+
+def test_artifact_failure_leaves_sources(tmp_path) -> None:
+    input_dir = tmp_path / "screens"
+    input_dir.mkdir()
+    _touch(input_dir, "buy.png", "div.png")
+    blocked = tmp_path / "not-a-dir"
+    blocked.write_text("occupied")
+
+    import pytest
+
+    with pytest.raises(OSError):
+        prepare_import(
+            input_dir,
+            blocked,
+            FakeEngine(),
+            prompt=_prompt_for()[0],
+            parse_fn=_parser({"buy.png": _purchase(), "div.png": _dividend()}),
+        )
+    assert (input_dir / "buy.png").is_file()
+    assert (input_dir / "div.png").is_file()
+    assert not (input_dir / "done").exists()
+
+
+def test_second_run_is_a_noop(tmp_path) -> None:
+    input_dir = tmp_path / "screens"
+    input_dir.mkdir()
+    _touch(input_dir, "buy.png", "div.png")
+    results = {"buy.png": _purchase(), "div.png": _dividend()}
+    prompt, _ = _prompt_for()
+    first = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        prompt=prompt,
+        parse_fn=_parser(results),
+    )
+    assert first.counts == {"ready": 1, "dividend": 1}
+
+    second = prepare_import(
+        input_dir,
+        tmp_path / "r",
+        FakeEngine(),
+        prompt=prompt,
+        parse_fn=_parser(results),
+    )
+    assert json.loads(second.transactions_path.read_text()) == []
+    assert second.report == []

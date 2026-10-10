@@ -358,6 +358,8 @@ def test_prepare_command_runs_without_ledger(monkeypatch, capsys, tmp_path):
         report_path=run_dir / "report.json",
         transactions=[],
         report=[],
+        moved={},
+        renamed={},
     )
     monkeypatch.setattr(
         prepare_module, "prepare_import", lambda *a, **k: outcome
@@ -394,6 +396,8 @@ def test_prepare_command_json_output(monkeypatch, capsys, tmp_path):
         report_path=run_dir / "report.json",
         transactions=[{"side": "buy"}],
         report=[{"source": "x.png", "status": "ready"}],
+        moved={},
+        renamed={},
     )
     monkeypatch.setattr(
         prepare_module, "prepare_import", lambda *a, **k: outcome
