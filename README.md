@@ -89,6 +89,28 @@ Other commands are `list`, `edit TRANSACTION_ID`, and
 reported individually while valid rows are saved. The CLI returns a nonzero
 status if any import row is rejected or skipped.
 
+## Bunq investment order import
+
+Prepare the local Bunq JSON export as a reviewable ledger import:
+
+```powershell
+uv run python -m investment_ledger prepare-bunq-import
+```
+
+The command reads `bunq_investment_orders.json` by default; supply another JSON
+path as the first argument when needed. It prompts once per ISIN for instrument
+type, ticker, and exchange, then writes `transactions.json` and `report.json`
+under a unique `.data/bunq-import/` run directory. No ledger records are changed
+until you explicitly run the printed import command.
+
+The converter uses Bunq's displayed quantity and unit price, calculates gross
+as their product rounded half-up to cents, and keeps fees separate. It does not
+use Bunq's `total` to change those fields; differences between the source total
+and calculated gross plus fee are shown as report warnings. The report also
+preserves each order's source IDs, timestamps, asset/name/legal name, and
+conversion details. Review `transactions.json` and `report.json` before
+importing. Duplicate confirmation is handled by the existing ledger importer.
+
 ## Holdings and cost basis
 
 ```powershell
