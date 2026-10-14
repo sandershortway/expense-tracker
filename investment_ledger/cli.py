@@ -74,6 +74,12 @@ def _parser() -> argparse.ArgumentParser:
         "source", help="JSON file path, or '-' to read standard input"
     )
 
+    serve = commands.add_parser(
+        "serve", help="serve a local web page showing all positions"
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=8000)
+
     prepare_bunq = commands.add_parser(
         "prepare-bunq-import",
         help="prepare a Bunq export as reviewable ledger import JSON",
@@ -497,11 +503,29 @@ def _prepare_bunq(args: argparse.Namespace) -> int:
     return 0
 
 
+def _serve(database: str, host: str, port: int) -> int:
+    from investment_ledger.web import make_server
+
+    with Ledger(database):
+        pass
+    server = make_server(database, host, port)
+    print(f"Serving positions at http://{host}:{port}/ (Ctrl+C to stop)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     if args.command == "prepare-bunq-import":
         return _prepare_bunq(args)
     database = args.db or os.environ.get(ENV_DATABASE) or str(DEFAULT_DATABASE)
+    if args.command == "serve":
+        return _serve(database, args.host, args.port)
     try:
         with Ledger(database) as ledger:
             return _dispatch(args, ledger)
