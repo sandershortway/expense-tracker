@@ -7,11 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from findash.core.database import create_session_factory, transaction
+from findash.investments.errors import InstrumentAlreadyExists
 from findash.investments.models import Instrument
-from findash.investments.repository import (
-    InstrumentAlreadyExists,
-    InstrumentRepository,
-)
+from findash.investments.repository import InstrumentRepository
 
 NVIDIA = {"isin": "US67066G1040", "ticker": "NVDA", "name": "Nvidia"}
 ASML = {
