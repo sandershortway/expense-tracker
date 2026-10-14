@@ -49,6 +49,14 @@ def mapping(isin="IE00B0M62Y33", **overrides):
     return InstrumentMapping.from_values(**fields)
 
 
+def test_uses_asset_name_when_optional_name_is_missing():
+    source = order()
+    del source["name"]
+    parsed = parse_bunq_export(export(source))
+    transactions, _ = parsed.transactions({"IE00B0M62Y33": mapping()})
+    assert transactions[0]["name"] == "AEX"
+
+
 def test_parse_buy_calculates_gross_from_displayed_quantity_and_price():
     parsed = parse_bunq_export(export(order()))
     transactions, reports = parsed.transactions({"IE00B0M62Y33": mapping()})

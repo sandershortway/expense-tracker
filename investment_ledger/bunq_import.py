@@ -68,7 +68,7 @@ class BunqOrderCandidate:
 
     @property
     def isin(self) -> str:
-        return str(self.source["isin"])
+        return _text(self.source["isin"], "isin")
 
     def transaction(self, mapping: InstrumentMapping) -> dict[str, str | None]:
         row = {
@@ -233,11 +233,7 @@ def _parse_order(index: int, source: Any) -> BunqOrderCandidate:
     _text(source.get("isin"), "isin")
     asset = _text(source.get("asset"), "asset")
     name_value = source.get("name")
-    name = (
-        name_value.strip()
-        if isinstance(name_value, str) and name_value.strip()
-        else asset
-    )
+    name = asset if name_value is None else _text(name_value, "name")
     side = _text(source.get("side"), "side").lower()
     if side not in {"buy", "sell"}:
         raise ValueError("side must be 'buy' or 'sell'")
@@ -246,8 +242,13 @@ def _parse_order(index: int, source: Any) -> BunqOrderCandidate:
     currency = _text(source.get("currency"), "currency").upper()
     if currency != "EUR":
         raise ValueError("only EUR orders can be imported")
+    timezone = source.get("timezone")
+    if timezone is not None and not isinstance(timezone, str):
+        raise ValueError("timezone must be a string or null")
 
     date_local = _text(source.get("date_local"), "date_local")
+    if "T" not in date_local:
+        raise ValueError("date_local must be an ISO local timestamp")
     try:
         local_datetime = datetime.fromisoformat(date_local)
     except ValueError as exc:

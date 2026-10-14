@@ -73,6 +73,22 @@ def _parser() -> argparse.ArgumentParser:
     batch.add_argument(
         "source", help="JSON file path, or '-' to read standard input"
     )
+
+    prepare_bunq = commands.add_parser(
+        "prepare-bunq-import",
+        help="prepare a Bunq export as reviewable ledger import JSON",
+    )
+    prepare_bunq.add_argument(
+        "source",
+        nargs="?",
+        default="bunq_investment_orders.json",
+        help="Bunq export JSON path (default: bunq_investment_orders.json)",
+    )
+    prepare_bunq.add_argument(
+        "--output-dir",
+        default=".data/bunq-import",
+        help="base folder for run artifacts (default: .data/bunq-import)",
+    )
     return parser
 
 
@@ -110,6 +126,14 @@ def _emit(
                 f"updated_at={transaction['updated_at']}",
                 file=stream,
             )
+    elif isinstance(value, dict) and "run_dir" in value:
+        print(f"Bunq import preparation: {value['run_dir']}", file=stream)
+        for status, count in sorted(value["counts"].items()):
+            print(f"  {status}: {count}", file=stream)
+        print(f"Transactions: {value['transactions_file']}", file=stream)
+        print(f"Report: {value['report_file']}", file=stream)
+        print("Review the JSON, then import it with:", file=stream)
+        print(f"  {value['import_command']}", file=stream)
     elif isinstance(value, dict) and "holdings" in value:
         print(f"{value['count']} holding(s)", file=stream)
         for position in value["holdings"]:
@@ -440,8 +464,43 @@ def _dispatch(args: argparse.Namespace, ledger: Ledger) -> int:
     raise InputError(f"unsupported command: {args.command}")
 
 
+def _prompt_bunq_mapping(isin: str) -> tuple[str, str, str] | None:
+    print(f"Instrument mapping for ISIN {isin}", file=sys.stderr)
+    try:
+        return (
+            _read_prompt("Instrument type (stock/etf)"),
+            _read_prompt("Ticker"),
+            _read_prompt("Exchange"),
+        )
+    except InputError:
+        return None
+
+
+def _prepare_bunq(args: argparse.Namespace) -> int:
+    from investment_ledger.bunq_import import BunqImportError
+    from investment_ledger.prepare_bunq_import import prepare_bunq_import
+
+    prompt = _prompt_bunq_mapping if sys.stdin.isatty() else None
+    try:
+        outcome = prepare_bunq_import(
+            Path(args.source), Path(args.output_dir), prompt=prompt
+        )
+    except BunqImportError as exc:
+        _emit_error(str(exc), args.format)
+        return EXIT_INPUT_ERROR
+    except OSError as exc:
+        _emit_error(str(exc), args.format, code="operational_error")
+        return EXIT_OPERATIONAL_ERROR
+
+    summary = outcome.summary()
+    _emit(summary, args.format)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    if args.command == "prepare-bunq-import":
+        return _prepare_bunq(args)
     database = args.db or os.environ.get(ENV_DATABASE) or str(DEFAULT_DATABASE)
     try:
         with Ledger(database) as ledger:
