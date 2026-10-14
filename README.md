@@ -146,6 +146,24 @@ figures as `holdings`. The page reads the ledger on every refresh and never
 writes to it. The server binds to localhost by default; change it with `--host`
 and `--port`, and stop it with Ctrl+C.
 
+Current prices come from a local JSON file (default `.data/prices.json`,
+override with `--prices`), keyed by `TICKER@EXCHANGE` with EUR prices as
+strings:
+
+```json
+{
+  "prices": {
+    "IAEX@XAMS": {"price_eur": "113.66", "as_of": "2026-10-14", "source": "..."}
+  }
+}
+```
+
+Prices are not fetched automatically; update the file and refresh the page.
+With a price, each position shows market value, unrealized P&L (market value
+minus cost basis) and total return:
+`(market value + sale proceeds - amount invested incl. fees) / amount invested`.
+The portfolio total is shown once every open position has a price.
+
 ## Pre-commit behavior
 
 Each commit runs, in order:
