@@ -39,7 +39,8 @@ uv run pre-commit install
 ## Investment transaction ledger
 
 The local SQLite ledger stores executed stock and ETF buy/sell transactions.
-It does not calculate holdings, profit/loss, or current market value.
+The `holdings` command aggregates them into per-instrument positions; it does
+not fetch market prices or compute current market value.
 
 Use the CLI from the repository root:
 
@@ -87,6 +88,30 @@ Other commands are `list`, `edit TRANSACTION_ID`, and
 `delete TRANSACTION_ID --yes`. Use `--help` for options. Invalid JSON rows are
 reported individually while valid rows are saved. The CLI returns a nonzero
 status if any import row is rejected or skipped.
+
+## Holdings and cost basis
+
+```powershell
+uv run python -m investment_ledger holdings
+uv run python -m investment_ledger holdings --ticker NVDA
+uv run python -m investment_ledger --format json holdings
+```
+
+`holdings` folds each instrument's transactions in trade-date order and
+reports one position per ticker/exchange pair plus overall totals. It only
+reads the ledger — the command never writes to the database.
+
+Cost basis uses the **average-cost** convention: buys add `gross + fee` to the
+position's cost, and sells release the proportional share of the remaining
+cost basis while realizing `(gross - fee) - released` as profit/loss. Fully
+closed positions stay listed with zero quantity so realized P&L remains
+visible; selling more than held produces a warning rather than an error.
+
+Each position reports `net_quantity`, `cost_basis_eur`, `average_cost_eur`,
+`total_invested_eur`, `total_proceeds_eur`, `realized_pnl_eur`,
+`total_fees_eur`, `transaction_count`, `first_trade_date`,
+`last_trade_date`, and any warnings. `--format json` emits the same fields
+with decimal values as strings under `holdings` plus a `totals` object.
 
 ## Screenshot import preparation
 
