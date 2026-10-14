@@ -13,6 +13,25 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
+@pytest.fixture
+def start_calls(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, Any]]:
+    """Record migration and uvicorn calls made by the start command."""
+    calls: list[tuple[str, Any]] = []
+
+    def fake_upgrade(url: str) -> None:
+        calls.append(("migrate", url))
+
+    def fake_run(*args: Any, **kwargs: Any) -> None:
+        calls.append(("uvicorn", (args, kwargs)))
+
+    monkeypatch.setattr("findash.__main__.upgrade_database", fake_upgrade)
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+    monkeypatch.setenv(
+        "FINDASH_INVESTMENTS_DATABASE_URL", "sqlite:///configured.db"
+    )
+    return calls
+
+
 def test_health_returns_ok(client: TestClient) -> None:
     response = client.get("/api/health")
 
@@ -38,16 +57,33 @@ def test_docs_page_is_served(client: TestClient) -> None:
         (["--host", "0.0.0.0", "--port", "8765"], "0.0.0.0", 8765),
     ],
 )
-def test_start_command_runs_uvicorn(
-    monkeypatch: pytest.MonkeyPatch, argv: list[str], host: str, port: int
+def test_start_command_migrates_then_runs_uvicorn(
+    start_calls: list[tuple[str, Any]], argv: list[str], host: str, port: int
 ) -> None:
-    calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
-
-    def fake_run(*args: Any, **kwargs: Any) -> None:
-        calls.append((args, kwargs))
-
-    monkeypatch.setattr(uvicorn, "run", fake_run)
-
     main(argv)
 
-    assert calls == [(("findash.main:app",), {"host": host, "port": port})]
+    assert start_calls == [
+        ("migrate", "sqlite:///configured.db"),
+        (
+            "uvicorn",
+            (("findash.main:app",), {"host": host, "port": port}),
+        ),
+    ]
+
+
+def test_start_command_stops_when_migration_fails(
+    start_calls: list[tuple[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def failing_upgrade(url: str) -> None:
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr("findash.__main__.upgrade_database", failing_upgrade)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main([])
+
+    assert exit_info.value.code == 1
+    assert "database migration failed: disk full" in capsys.readouterr().err
+    assert start_calls == []
