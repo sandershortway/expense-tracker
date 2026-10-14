@@ -438,3 +438,143 @@ def test_prepare_command_ocr_unavailable(monkeypatch, capsys, tmp_path):
 
     assert code == 1
     assert "tesseract missing" in captured.out
+
+
+def _seed(db_path, *rows):
+    with Ledger(str(db_path)) as ledger:
+        ledger.add_many([TransactionData.from_mapping(row) for row in rows])
+
+
+def test_holdings_text_output(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "ledger.sqlite3"
+    _seed(
+        db_path,
+        transaction(
+            ticker="NVDA",
+            name="Nvidia",
+            quantity="10",
+            unit_price_eur="100.00",
+            gross_amount_eur="1000.00",
+            fee_eur="5.00",
+        ),
+        transaction(
+            side="sell",
+            ticker="NVDA",
+            name="Nvidia",
+            trade_date="2024-02-01",
+            quantity="5",
+            unit_price_eur="120.00",
+            gross_amount_eur="600.00",
+        ),
+    )
+
+    code, captured = run_cli(monkeypatch, capsys, db_path, "holdings")
+
+    assert code == 0
+    assert "1 holding(s)" in captured.out
+    assert "NVDA@XNAS (stock) name=Nvidia" in captured.out
+    assert "net_quantity=5" in captured.out
+    assert "cost_basis_eur=502.50" in captured.out
+    assert "average_cost_eur=100.500000" in captured.out
+    assert "realized_pnl_eur=97.50" in captured.out
+    assert "total_fees_eur=5.00" in captured.out
+    assert "transactions=2" in captured.out
+    assert "Totals:" in captured.out
+    assert "cost_basis_eur=502.50" in captured.out
+
+
+def test_holdings_json_output_and_ticker_filter(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "ledger.sqlite3"
+    _seed(
+        db_path,
+        transaction(ticker="NVDA", name="Nvidia"),
+        transaction(
+            ticker="SXRV",
+            instrument_type="etf",
+            name="S&P 500 Technology",
+        ),
+    )
+
+    code, captured = run_cli(
+        monkeypatch, capsys, db_path, "--format", "json", "holdings"
+    )
+    output = json.loads(captured.out)
+    assert code == 0
+    assert output["count"] == 2
+    tickers = [p["ticker"] for p in output["holdings"]]
+    assert tickers == ["NVDA", "SXRV"]
+    assert output["holdings"][0]["cost_basis_eur"] == "10.00"
+    assert output["holdings"][0]["warnings"] == []
+    assert set(output["totals"]) == {
+        "cost_basis_eur",
+        "total_invested_eur",
+        "total_proceeds_eur",
+        "realized_pnl_eur",
+        "total_fees_eur",
+    }
+
+    code, captured = run_cli(
+        monkeypatch,
+        capsys,
+        db_path,
+        "--format",
+        "json",
+        "holdings",
+        "--ticker",
+        "nvda",
+    )
+    output = json.loads(captured.out)
+    assert code == 0
+    assert output["count"] == 1
+    assert output["holdings"][0]["ticker"] == "NVDA"
+
+    code, captured = run_cli(
+        monkeypatch,
+        capsys,
+        db_path,
+        "--format",
+        "json",
+        "holdings",
+        "--ticker",
+        "MISSING",
+    )
+    output = json.loads(captured.out)
+    assert code == 0
+    assert output["count"] == 0
+    assert output["holdings"] == []
+    assert output["totals"]["cost_basis_eur"] == "0.00"
+
+
+def test_holdings_empty_ledger(monkeypatch, capsys, tmp_path):
+    code, captured = run_cli(
+        monkeypatch, capsys, tmp_path / "ledger.sqlite3", "holdings"
+    )
+    assert code == 0
+    assert "0 holding(s)" in captured.out
+    assert "cost_basis_eur=0.00" in captured.out
+
+
+def test_holdings_oversell_warning_shown(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "ledger.sqlite3"
+    _seed(
+        db_path,
+        transaction(
+            side="sell",
+            quantity="8",
+            unit_price_eur="4.00",
+            gross_amount_eur="32.00",
+        ),
+    )
+    code, captured = run_cli(monkeypatch, capsys, db_path, "holdings")
+    assert code == 0
+    assert "warning: sold 8 more than held" in captured.out
+
+
+def test_holdings_does_not_mutate_ledger(monkeypatch, capsys, tmp_path):
+    db_path = tmp_path / "ledger.sqlite3"
+    _seed(db_path, transaction())
+
+    run_cli(monkeypatch, capsys, db_path, "holdings")
+
+    with Ledger(str(db_path)) as ledger:
+        assert len(ledger.list_transactions()) == 1
