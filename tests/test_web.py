@@ -1,12 +1,14 @@
 import threading
 import urllib.error
 import urllib.request
+from decimal import Decimal
 
 import pytest
 
 from investment_ledger.domain import TransactionData
 from investment_ledger.holdings import compute_holdings
 from investment_ledger.storage import Ledger
+from investment_ledger.valuation import Price
 from investment_ledger.web import make_server, render_positions
 
 
@@ -56,6 +58,19 @@ def test_render_positions_shows_each_position_and_totals(tmp_path):
     assert "<AEX>" not in page
     assert '<td class="num">101.00</td>' in page
     assert '<td class="num">202.00</td>' in page
+
+
+def test_render_positions_with_prices_shows_value_and_return(tmp_path):
+    stored = seed(tmp_path / "ledger.sqlite3", transaction())
+    prices = {"AEX@XAMS": Price(Decimal("60.60"), "2026-10-14", "test")}
+
+    page = render_positions(compute_holdings(stored), prices)
+
+    assert '<td class="num">60.60</td>' in page
+    assert '<td class="num">121.20</td>' in page
+    assert '<td class="num pos">+20.20</td>' in page
+    assert '<td class="num pos">+20.00%</td>' in page
+    assert "Prices as of 2026-10-14" in page
 
 
 def test_render_positions_empty_ledger():

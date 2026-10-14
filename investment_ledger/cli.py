@@ -79,6 +79,11 @@ def _parser() -> argparse.ArgumentParser:
     )
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument(
+        "--prices",
+        default=".data/prices.json",
+        help="JSON file with current EUR prices (default: .data/prices.json)",
+    )
 
     prepare_bunq = commands.add_parser(
         "prepare-bunq-import",
@@ -503,12 +508,18 @@ def _prepare_bunq(args: argparse.Namespace) -> int:
     return 0
 
 
-def _serve(database: str, host: str, port: int) -> int:
+def _serve(database: str, host: str, port: int, prices: Path) -> int:
+    from investment_ledger.valuation import PriceFileError, load_prices
     from investment_ledger.web import make_server
 
+    try:
+        load_prices(prices)
+    except PriceFileError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_INPUT_ERROR
     with Ledger(database):
         pass
-    server = make_server(database, host, port)
+    server = make_server(database, host, port, prices)
     print(f"Serving positions at http://{host}:{port}/ (Ctrl+C to stop)")
     try:
         server.serve_forever()
@@ -525,7 +536,7 @@ def main(argv: list[str] | None = None) -> int:
         return _prepare_bunq(args)
     database = args.db or os.environ.get(ENV_DATABASE) or str(DEFAULT_DATABASE)
     if args.command == "serve":
-        return _serve(database, args.host, args.port)
+        return _serve(database, args.host, args.port, Path(args.prices))
     try:
         with Ledger(database) as ledger:
             return _dispatch(args, ledger)
