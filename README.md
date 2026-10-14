@@ -16,14 +16,21 @@ The project uses `uv`, FastAPI, Ruff, mypy, pytest, and pre-commit.
 backend/                  Python backend (uv workspace member "findash")
   pyproject.toml          backend package metadata and runtime dependencies
   src/findash/
-    main.py               FastAPI app factory (create_app) and app
+    main.py               FastAPI app factory (create_app)
     __main__.py           `findash` start command
     core/
       settings.py         configuration from FINDASH_* environment variables
       database.py         engine, sessions, transactions, UTC timestamps
+      errors.py           application errors and the JSON error format
     investments/          stock/ETF module
-      models.py           database tables (SQLAlchemy models)
+      api.py              HTTP endpoints (translate HTTP <-> service)
+      schemas.py          request/response shapes and input validation
+      service.py          business operations; commits successful writes
       repository.py       data access: create and read rows
+      models.py           database tables (SQLAlchemy models)
+      errors.py           this module's errors (not found, conflicts)
+      isin.py             ISIN format and check-digit validation
+      dependencies.py     per-request database session
       database.py         applies this module's migrations
       migrations/         Alembic migrations for the investments database
   tests/                  backend tests (core/, investments/, app)
@@ -34,9 +41,17 @@ pyproject.toml            uv workspace root and tool configuration
 uv.lock                   single lockfile for the whole workspace
 ```
 
-Code is grouped by feature: each module (such as `investments`) will hold its
-own database, service, and API code, while `core` holds what modules share. A
+Code is grouped by feature: each module (such as `investments`) holds its own
+database, service, and API code, while `core` holds what modules share. A
 `frontend/` directory will be added once UI work starts.
+
+Within a module, a request flows through layers that each have one job:
+
+```text
+api.py  ->  service.py  ->  repository.py  ->  models.py / database
+(HTTP)      (business rules,  (queries, never     (tables and
+             commits)          commits)            constraints)
+```
 
 ## Prerequisites
 
@@ -71,6 +86,63 @@ Ctrl+C.
   try every endpoint
 - <http://127.0.0.1:8000/api/health> — health check, returns
   `{"status": "ok"}`
+
+## Investments API
+
+In `/docs`, open an endpoint, click **Try it out**, fill in the request, and
+click **Execute**.
+
+### Instruments
+
+| Method and path                            | Purpose                       |
+| ------------------------------------------ | ----------------------------- |
+| `POST /api/investments/instruments`        | create an instrument          |
+| `GET /api/investments/instruments`         | list all instruments (by ID)  |
+| `GET /api/investments/instruments/{id}`    | get one instrument            |
+
+Create request:
+
+```json
+{
+  "isin": "US67066G1040",
+  "ticker": "NVDA",
+  "name": "Nvidia",
+  "legal_name": "NVIDIA Corporation"
+}
+```
+
+`isin`, `ticker`, and `name` are required; `legal_name` is optional. The ISIN
+must have a valid format and check digit. ISIN and ticker are converted to
+uppercase and surrounding whitespace is removed. A successful create returns
+`201 Created` with a `Location` header and the stored instrument:
+
+```json
+{
+  "id": 1,
+  "isin": "US67066G1040",
+  "ticker": "NVDA",
+  "name": "Nvidia",
+  "legal_name": "NVIDIA Corporation",
+  "created_at": "2026-10-14T19:30:00Z",
+  "updated_at": "2026-10-14T19:30:00Z"
+}
+```
+
+Instruments can't be edited or deleted yet.
+
+### Errors
+
+Invalid input returns `422` with FastAPI's standard `detail` list, which
+names each invalid field. Business errors use one JSON shape:
+
+```json
+{"error": {"code": "instrument_exists", "message": "an instrument with ISIN US67066G1040 already exists"}}
+```
+
+| Status | Code                   | When                                  |
+| ------ | ---------------------- | ------------------------------------- |
+| 404    | `instrument_not_found` | no instrument with that ID            |
+| 409    | `instrument_exists`    | an instrument with that ISIN exists   |
 
 ## Database
 
@@ -133,7 +205,7 @@ commands.
 1. Backend foundation: this layout, the API shell, and type checking (done)
 2. Database setup: settings, SQLAlchemy, Alembic migrations, `instruments`
    table and repository (done)
-3. Instruments API
+3. Instruments API: create, list, and get instruments (done)
 4. Trades
 5. Dividends
 6. Holdings and average cost basis
