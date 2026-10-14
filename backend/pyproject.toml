@@ -1,0 +1,16 @@
+[project]
+name = "findash"
+version = "0.1.0"
+description = "Backend API for the personal financial dashboard."
+requires-python = ">=3.15"
+dependencies = [
+    "fastapi>=0.142.4,<0.143",
+    "uvicorn>=0.54.0",
+]
+
+[project.scripts]
+findash = "findash.__main__:main"
+
+[build-system]
+requires = ["uv_build>=0.13,<0.14"]
+build-backend = "uv_build"

@@ -1,7 +1,35 @@
-# expense-tracker
+# expense-tracker — personal financial dashboard
 
-A personal financial tracking application with a local stock/ETF transaction
-ledger. The project uses `uv`, Ruff, pytest, and pre-commit for development.
+A personal financial dashboard that runs locally on your own machine. The
+backend is a FastAPI application, and a web frontend will call its API.
+Planned modules:
+
+- **Investments** — stock and ETF portfolio tracking (in progress)
+- **Expenses** — expense tracking (planned)
+- **Crypto** — crypto portfolio tracking (optional, later)
+
+The project uses `uv`, FastAPI, Ruff, mypy, pytest, and pre-commit.
+
+## Repository layout
+
+```text
+backend/                  Python backend (uv workspace member "findash")
+  pyproject.toml          backend package metadata and runtime dependencies
+  src/findash/
+    main.py               FastAPI app factory (create_app) and app
+    __main__.py           `findash` start command
+    core/                 shared plumbing: settings, database (upcoming)
+    investments/          stock/ETF module (upcoming)
+  tests/                  backend tests
+docs/                     PRDs for current work
+docs/archive/             PRDs of the earlier CLI-based ledger
+pyproject.toml            uv workspace root and tool configuration
+uv.lock                   single lockfile for the whole workspace
+```
+
+Code is grouped by feature: each module (such as `investments`) will hold its
+own database, service, and API code, while `core` holds what modules share. A
+`frontend/` directory will be added once UI work starts.
 
 ## Prerequisites
 
@@ -10,130 +38,44 @@ ledger. The project uses `uv`, Ruff, pytest, and pre-commit for development.
 
 ## Setup
 
-From a fresh checkout:
+From a fresh checkout, in the repository root:
 
 ```sh
 uv sync
-```
-
-`uv` automatically downloads CPython 3.15 (per `.python-version`), creates
-`.venv`, and installs the locked dev dependencies — no manual virtual
-environment or activation needed.
-
-Install the pre-commit hooks:
-
-```sh
 uv run pre-commit install
 ```
 
-## Commands
+`uv` downloads CPython 3.15 (per `.python-version`), creates `.venv`, and
+installs the backend package plus the locked development tools. There's no
+need to create or activate a virtual environment manually. Run every command
+below from the repository root.
 
-| Task             | Command                    |
-| ---------------- | -------------------------- |
-| Sync environment | `uv sync`                  |
-| Format code      | `uv run ruff format .`     |
-| Lint             | `uv run ruff check .`      |
-| Run tests        | `uv run pytest`            |
-| Install hooks    | `uv run pre-commit install`|
+## Running the API
 
-## Investment transaction ledger
-
-The local SQLite ledger stores executed stock and ETF buy/sell transactions.
-The `holdings` command aggregates them into per-instrument positions; it does
-not fetch market prices or compute current market value.
-
-Use the CLI from the repository root:
-
-```powershell
-uv run python -m investment_ledger --db .data/investments.sqlite3 list
-uv run python -m investment_ledger add
-uv run python -m investment_ledger import trades.json
-Get-Content -Raw trades.json | uv run python -m investment_ledger --format json import -
+```sh
+uv run findash
 ```
 
-`add` prompts for one transaction. JSON import expects an array of transaction
-objects; decimal fields must be strings. `--format json` emits machine-readable
-results. A duplicate import candidate requires a terminal confirmation. The
-default database is `.data/investments.sqlite3` (ignored by Git); override it
-with the global `--db PATH` option or `INVESTMENT_LEDGER_DB` environment
-variable. CLI options precede the subcommand.
+The server starts at <http://127.0.0.1:8000> and is only reachable from your
+own machine. Use `--host` and `--port` to change this, and stop it with
+Ctrl+C.
 
-Each transaction requires `side`, `instrument_type`, `ticker`, `exchange`,
-`trade_date` (`YYYY-MM-DD`), `quantity`, `unit_price_eur`, and
-`gross_amount_eur`. Optional fields are `name`, `fee_eur`, and `currency`
-(which must be `EUR` when supplied). Quantity supports up to 8 decimal places,
-unit price up to 6, and EUR amounts up to 2. Gross amount is quantity times
-unit price rounded half-up to cents; fees are separate.
+- <http://127.0.0.1:8000/docs> — interactive API documentation, where you can
+  try every endpoint
+- <http://127.0.0.1:8000/api/health> — health check, returns
+  `{"status": "ok"}`
 
-Example JSON:
+## Development commands
 
-```json
-[
-  {
-    "side": "buy",
-    "instrument_type": "etf",
-    "ticker": "VWCE",
-    "exchange": "XETR",
-    "trade_date": "2024-01-02",
-    "quantity": "2.5",
-    "unit_price_eur": "100.00",
-    "gross_amount_eur": "250.00",
-    "fee_eur": "1.00",
-    "name": "Vanguard FTSE All-World"
-  }
-]
-```
-
-Other commands are `list`, `edit TRANSACTION_ID`, and
-`delete TRANSACTION_ID --yes`. Use `--help` for options. Invalid JSON rows are
-reported individually while valid rows are saved. The CLI returns a nonzero
-status if any import row is rejected or skipped.
-
-## Bunq investment order import
-
-Prepare the local Bunq JSON export as a reviewable ledger import:
-
-```powershell
-uv run python -m investment_ledger prepare-bunq-import
-```
-
-The command reads `bunq_investment_orders.json` by default; supply another JSON
-path as the first argument when needed. It prompts once per ISIN for instrument
-type, ticker, and exchange, then writes `transactions.json` and `report.json`
-under a unique `.data/bunq-import/` run directory. No ledger records are changed
-until you explicitly run the printed import command.
-
-The converter uses Bunq's displayed quantity and unit price, calculates gross
-as their product rounded half-up to cents, and keeps fees separate. It does not
-use Bunq's `total` to change those fields; differences between the source total
-and calculated gross plus fee are shown as report warnings. The report also
-preserves each order's source IDs, timestamps, asset/name/legal name, and
-conversion details. Review `transactions.json` and `report.json` before
-importing. Duplicate confirmation is handled by the existing ledger importer.
-
-## Holdings and cost basis
-
-```powershell
-uv run python -m investment_ledger holdings
-uv run python -m investment_ledger holdings --ticker NVDA
-uv run python -m investment_ledger --format json holdings
-```
-
-`holdings` folds each instrument's transactions in trade-date order and
-reports one position per ticker/exchange pair plus overall totals. It only
-reads the ledger — the command never writes to the database.
-
-Cost basis uses the **average-cost** convention: buys add `gross + fee` to the
-position's cost, and sells release the proportional share of the remaining
-cost basis while realizing `(gross - fee) - released` as profit/loss. Fully
-closed positions stay listed with zero quantity so realized P&L remains
-visible; selling more than held produces a warning rather than an error.
-
-Each position reports `net_quantity`, `cost_basis_eur`, `average_cost_eur`,
-`total_invested_eur`, `total_proceeds_eur`, `realized_pnl_eur`,
-`total_fees_eur`, `transaction_count`, `first_trade_date`,
-`last_trade_date`, and any warnings. `--format json` emits the same fields
-with decimal values as strings under `holdings` plus a `totals` object.
+| Task                 | Command                             |
+| -------------------- | ----------------------------------- |
+| Sync environment     | `uv sync`                           |
+| Start the API        | `uv run findash`                    |
+| Run tests            | `uv run pytest`                     |
+| Type check           | `uv run mypy`                       |
+| Lint                 | `uv run ruff check .`               |
+| Format code          | `uv run ruff format .`              |
+| Run all hooks        | `uv run pre-commit run --all-files` |
 
 ## Pre-commit behavior
 
@@ -142,8 +84,21 @@ Each commit runs, in order:
 1. **ruff format** — reformats staged Python files. If formatting changes a
    file, the commit is blocked until the changes are re-staged.
 2. **ruff check** — lints staged Python files.
-3. **pytest** — runs the full test suite on every commit. If the suite is empty,
-   pytest's “no tests collected” exit code is treated as passing.
+3. **mypy** — type checks `backend/src` and `backend/tests` in strict mode.
+4. **pytest** — runs the full test suite.
 
 Hooks invoke `uv run`, so they use the same locked tool versions as manual
 commands.
+
+## Roadmap
+
+1. Backend foundation: this layout, the API shell, and type checking (done)
+2. Database setup: settings, SQLAlchemy, Alembic migrations, `instruments`
+   table
+3. Instruments API
+4. Trades
+5. Dividends
+6. Holdings and average cost basis
+
+Personal financial data (databases under `.data/`, source files under
+`data/`) stays local and is never committed.
