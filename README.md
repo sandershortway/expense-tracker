@@ -135,6 +135,17 @@ Each position reports `net_quantity`, `cost_basis_eur`, `average_cost_eur`,
 `last_trade_date`, and any warnings. `--format json` emits the same fields
 with decimal values as strings under `holdings` plus a `totals` object.
 
+## Positions web page
+
+```powershell
+uv run python -m investment_ledger serve
+```
+
+Open <http://127.0.0.1:8000/> to see a table of all positions with the same
+figures as `holdings`. The page reads the ledger on every refresh and never
+writes to it. The server binds to localhost by default; change it with `--host`
+and `--port`, and stop it with Ctrl+C.
+
 ## Pre-commit behavior
 
 Each commit runs, in order:
