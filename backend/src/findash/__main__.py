@@ -21,7 +21,12 @@ def main(argv: list[str] | None = None) -> None:
         print(f"error: database migration failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error
 
-    uvicorn.run("findash.main:app", host=args.host, port=args.port)
+    uvicorn.run(
+        "findash.main:create_app",
+        factory=True,
+        host=args.host,
+        port=args.port,
+    )
 
 
 if __name__ == "__main__":

@@ -1,16 +1,30 @@
+from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 from findash.__main__ import main
+from findash.core.settings import Settings
+from findash.investments.dependencies import InvestmentsSession
 from findash.main import create_app
 
 
 @pytest.fixture
-def client() -> TestClient:
-    return TestClient(create_app())
+def database_path(tmp_path: Path) -> Path:
+    return tmp_path / "data" / "investments.db"
+
+
+@pytest.fixture
+def settings(database_path: Path) -> Settings:
+    return Settings(investments_database_url=f"sqlite:///{database_path}")
+
+
+@pytest.fixture
+def client(settings: Settings) -> TestClient:
+    return TestClient(create_app(settings))
 
 
 @pytest.fixture
@@ -50,6 +64,31 @@ def test_docs_page_is_served(client: TestClient) -> None:
     assert client.get("/docs").status_code == 200
 
 
+def test_creating_the_app_does_not_open_the_database(
+    settings: Settings, database_path: Path
+) -> None:
+    create_app(settings)
+
+    assert not database_path.parent.exists()
+
+
+def test_requests_get_a_session_while_the_app_runs(
+    settings: Settings, database_path: Path
+) -> None:
+    app = create_app(settings)
+
+    @app.get("/test/session")
+    def use_session(session: InvestmentsSession) -> dict[str, int]:
+        return {"value": session.scalar(text("SELECT 1")) or 0}
+
+    with TestClient(app) as client:
+        response = client.get("/test/session")
+        assert response.json() == {"value": 1}
+        assert app.state.investments_session_factory is not None
+
+    assert database_path.exists()
+
+
 @pytest.mark.parametrize(
     ("argv", "host", "port"),
     [
@@ -66,7 +105,10 @@ def test_start_command_migrates_then_runs_uvicorn(
         ("migrate", "sqlite:///configured.db"),
         (
             "uvicorn",
-            (("findash.main:app",), {"host": host, "port": port}),
+            (
+                ("findash.main:create_app",),
+                {"factory": True, "host": host, "port": port},
+            ),
         ),
     ]
 
