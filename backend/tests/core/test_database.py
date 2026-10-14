@@ -77,6 +77,34 @@ def test_transaction_rolls_back_on_error(engine: Engine) -> None:
     assert count_notes(engine) == 0
 
 
+def test_savepoint_rollback_keeps_outer_transaction_open(
+    engine: Engine,
+) -> None:
+    session = create_session_factory(engine)()
+    session.add(Note(text="outer"))
+    with pytest.raises(RuntimeError):
+        with session.begin_nested():
+            session.add(Note(text="inner"))
+            session.flush()
+            raise RuntimeError("undo inner")
+    session.rollback()
+    session.close()
+
+    assert count_notes(engine) == 0
+
+
+def test_released_savepoint_is_not_committed_on_its_own(
+    engine: Engine,
+) -> None:
+    session = create_session_factory(engine)()
+    with session.begin_nested():
+        session.add(Note(text="inner"))
+    session.rollback()
+    session.close()
+
+    assert count_notes(engine) == 0
+
+
 def test_objects_stay_readable_after_commit(engine: Engine) -> None:
     with transaction(create_session_factory(engine)) as session:
         note = Note(text="readable")
