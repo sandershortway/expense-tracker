@@ -17,14 +17,35 @@
 - After the PRD work and verification are complete, push the branch and open a
   pull request targeting `main`.
 
+## Repository Layout
+
+- The repository root is a uv workspace (`pyproject.toml`, one `uv.lock`).
+  The Python backend is the workspace member in `backend/`: the `findash`
+  package lives in `backend/src/findash/` and its tests in `backend/tests/`.
+- Group backend code by feature: each module (for example
+  `findash.investments`) owns its own database, service, and API code;
+  `findash.core` holds shared plumbing. A `frontend/` directory is added
+  later.
+- Write PRDs in `docs/`; PRDs for the retired CLI ledger are in
+  `docs/archive/`.
+
 ## Python Workflow
 
-- Use `uv` to manage the Python environment and run Python commands.
-- Run tests with `uv run pytest`.
-- Run lint with `uv run ruff check .` and verify formatting with `uv run ruff format --check .`.
-- The investment ledger CLI is available from the repository root with `uv run python -m investment_ledger`.
+- Use `uv` to manage the Python environment and run Python commands. Run all
+  commands from the repository root.
+- Add dependencies with `uv add` (`uv add --package findash ...` for backend
+  runtime dependencies, `uv add --dev ...` for tooling).
+- Start the API with `uv run findash` (http://127.0.0.1:8000, docs at
+  `/docs`).
+- Before committing, all of these must pass:
+  - tests: `uv run pytest`
+  - type check: `uv run mypy` (strict)
+  - lint: `uv run ruff check .`
+  - formatting: `uv run ruff format --check .`
 
 ## Local Financial Data
 
-- Keep the default investment database under `.data/`; this directory is Git-ignored.
-- Do not add user-provided financial files, screenshots, or local database files to commits unless explicitly requested.
+- Keep local databases under `.data/`; this directory is Git-ignored.
+- Do not add user-provided financial files (such as those in `data/`),
+  screenshots, or local database files to commits unless explicitly
+  requested.
