@@ -1,12 +1,13 @@
 [project]
 name = "expense-tracker"
 version = "0.1.0"
-description = "A personal expense tracking application."
+description = "A personal financial dashboard."
 requires-python = ">=3.15"
-dependencies = []
+dependencies = ["findash"]
 
 [dependency-groups]
 dev = [
+    "httpx2>=2.13.1",
     "pre-commit>=4",
     "pytest>=9,<10",
     "ruff>=0.16",
@@ -15,6 +16,12 @@ dev = [
 [tool.uv]
 package = false
 
+[tool.uv.workspace]
+members = ["backend"]
+
+[tool.uv.sources]
+findash = { workspace = true }
+
 [tool.ruff]
 line-length = 79
 
@@ -22,5 +29,4 @@ line-length = 79
 select = ["B", "E", "F", "I", "UP", "W"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["."]
+testpaths = ["backend/tests"]
