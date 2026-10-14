@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from investment_ledger.domain import TransactionData, ValidationError
+from investment_ledger.holdings import HoldingsReport, compute_holdings
 from investment_ledger.storage import Ledger, LedgerError, TransactionNotFound
 
 EXIT_OPERATIONAL_ERROR = 1
@@ -29,6 +30,15 @@ def _parser() -> argparse.ArgumentParser:
 
     commands.add_parser("add", help="add one transaction using prompts")
     commands.add_parser("list", help="list stored transactions")
+
+    holdings = commands.add_parser(
+        "holdings",
+        help="show per-instrument positions, cost basis, and realized P&L",
+    )
+    holdings.add_argument(
+        "--ticker",
+        help="restrict output to one ticker (case-insensitive)",
+    )
 
     edit = commands.add_parser("edit", help="edit a transaction by ID")
     edit.add_argument("transaction_id")
@@ -116,6 +126,46 @@ def _emit(
                 f"updated_at={transaction['updated_at']}",
                 file=stream,
             )
+    elif isinstance(value, dict) and "holdings" in value:
+        print(f"{value['count']} holding(s)", file=stream)
+        for position in value["holdings"]:
+            print(
+                f"{position['ticker']}@{position['exchange']} "
+                f"({position['instrument_type']}) "
+                f"name={position['name'] or '<none>'}",
+                file=stream,
+            )
+            print(
+                f"  net_quantity={position['net_quantity']} "
+                f"cost_basis_eur={position['cost_basis_eur']} "
+                f"average_cost_eur="
+                f"{position['average_cost_eur'] or '<none>'}",
+                file=stream,
+            )
+            print(
+                f"  total_invested_eur={position['total_invested_eur']} "
+                f"total_proceeds_eur={position['total_proceeds_eur']} "
+                f"realized_pnl_eur={position['realized_pnl_eur']} "
+                f"total_fees_eur={position['total_fees_eur']}",
+                file=stream,
+            )
+            print(
+                f"  transactions={position['transaction_count']} "
+                f"first_trade_date={position['first_trade_date']} "
+                f"last_trade_date={position['last_trade_date']}",
+                file=stream,
+            )
+            for warning in position["warnings"]:
+                print(f"  warning: {warning}", file=stream)
+        totals = value["totals"]
+        print(
+            f"Totals: cost_basis_eur={totals['cost_basis_eur']} "
+            f"total_invested_eur={totals['total_invested_eur']} "
+            f"total_proceeds_eur={totals['total_proceeds_eur']} "
+            f"realized_pnl_eur={totals['realized_pnl_eur']} "
+            f"total_fees_eur={totals['total_fees_eur']}",
+            file=stream,
+        )
     elif isinstance(value, dict) and "transaction" in value:
         transaction = value["transaction"]
         print(
@@ -342,6 +392,14 @@ def _dispatch(args: argparse.Namespace, ledger: Ledger) -> int:
             {"count": len(transactions), "transactions": transactions},
             args.format,
         )
+        return 0
+
+    if args.command == "holdings":
+        positions = compute_holdings(ledger.list_transactions()).positions
+        if args.ticker:
+            wanted = args.ticker.upper()
+            positions = [p for p in positions if p.ticker == wanted]
+        _emit(HoldingsReport(positions).to_mapping(), args.format)
         return 0
 
     if args.command == "edit":
