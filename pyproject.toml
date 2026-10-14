@@ -3,10 +3,7 @@ name = "expense-tracker"
 version = "0.1.0"
 description = "A personal expense tracking application."
 requires-python = ">=3.15"
-dependencies = [
-    "pillow>=12.3.0",
-    "pytesseract>=0.3.13",
-]
+dependencies = []
 
 [dependency-groups]
 dev = [
