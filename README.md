@@ -18,11 +18,18 @@ backend/                  Python backend (uv workspace member "findash")
   src/findash/
     main.py               FastAPI app factory (create_app) and app
     __main__.py           `findash` start command
-    core/                 shared plumbing: settings, database (upcoming)
-    investments/          stock/ETF module (upcoming)
-  tests/                  backend tests
+    core/
+      settings.py         configuration from FINDASH_* environment variables
+      database.py         engine, sessions, transactions, UTC timestamps
+    investments/          stock/ETF module
+      models.py           database tables (SQLAlchemy models)
+      repository.py       data access: create and read rows
+      database.py         applies this module's migrations
+      migrations/         Alembic migrations for the investments database
+  tests/                  backend tests (core/, investments/, app)
 docs/                     PRDs for current work
 docs/archive/             PRDs of the earlier CLI-based ledger
+alembic.ini               Alembic configuration, one section per module
 pyproject.toml            uv workspace root and tool configuration
 uv.lock                   single lockfile for the whole workspace
 ```
@@ -65,6 +72,36 @@ Ctrl+C.
 - <http://127.0.0.1:8000/api/health> — health check, returns
   `{"status": "ok"}`
 
+## Database
+
+Each module has its own SQLite database. The investments database lives at
+`.data/investments.db` by default (`.data/` is Git-ignored). To use another
+location or database, set a SQLAlchemy URL:
+
+```powershell
+$env:FINDASH_INVESTMENTS_DATABASE_URL = "sqlite:///C:/path/to/investments.db"
+```
+
+`uv run findash` applies any pending migrations before the server starts, so
+the database is created and kept up to date automatically.
+
+### Schema changes
+
+The schema is managed by [Alembic](https://alembic.sqlalchemy.org/)
+migrations, which live in `backend/src/findash/investments/migrations/`.
+Every change to a model in `models.py` must ship with a migration in the same
+commit; a test fails when the models and migrations differ.
+
+```sh
+uv run alembic -n investments revision --autogenerate -m "add trades"
+uv run alembic -n investments upgrade head
+uv run alembic -n investments current
+uv run alembic -n investments check
+```
+
+Review each generated migration before committing it. `check` reports
+whether the models contain changes that no migration covers yet.
+
 ## Development commands
 
 | Task                 | Command                             |
@@ -76,6 +113,7 @@ Ctrl+C.
 | Lint                 | `uv run ruff check .`               |
 | Format code          | `uv run ruff format .`              |
 | Run all hooks        | `uv run pre-commit run --all-files` |
+| Apply migrations     | `uv run alembic -n investments upgrade head` |
 
 ## Pre-commit behavior
 
@@ -94,7 +132,7 @@ commands.
 
 1. Backend foundation: this layout, the API shell, and type checking (done)
 2. Database setup: settings, SQLAlchemy, Alembic migrations, `instruments`
-   table
+   table and repository (done)
 3. Instruments API
 4. Trades
 5. Dividends

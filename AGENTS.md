@@ -36,7 +36,22 @@
 - Add dependencies with `uv add` (`uv add --package findash ...` for backend
   runtime dependencies, `uv add --dev ...` for tooling).
 - Start the API with `uv run findash` (http://127.0.0.1:8000, docs at
-  `/docs`).
+  `/docs`). It applies pending database migrations first.
+
+## Database and Migrations
+
+- Each module has its own database and its own SQLAlchemy declarative base.
+  The investments database URL comes from
+  `FINDASH_INVESTMENTS_DATABASE_URL` (default
+  `sqlite:///.data/investments.db`).
+- Every model change ships with an Alembic migration in the same commit:
+  `uv run alembic -n investments revision --autogenerate -m "..."`, then
+  review the generated file. The test suite fails when models and
+  migrations differ.
+- Repositories work on a session passed in by the caller and never commit;
+  the caller owns the transaction.
+- Tests use a fresh, migrated SQLite database in pytest's temporary
+  directory; never point tests at `.data/`.
 - Before committing, all of these must pass:
   - tests: `uv run pytest`
   - type check: `uv run mypy` (strict)
