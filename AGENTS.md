@@ -50,6 +50,24 @@
   migrations differ.
 - Repositories work on a session passed in by the caller and never commit;
   the caller owns the transaction.
+
+## Layering Rules
+
+- Each module follows `api.py` -> `service.py` -> `repository.py` ->
+  `models.py`.
+- Endpoints only translate between HTTP and services: no queries and no
+  business rules. Input shape and format validation lives in Pydantic
+  schemas (`schemas.py`).
+- Services hold business rules that need the database and own write
+  transactions: they commit after a successful write.
+- Database constraints are the last line of defence, not the primary check.
+- Module errors subclass `findash.core.errors.NotFoundError` (404) or
+  `ConflictError` (409) with a stable machine-readable `code`; the app turns
+  them into `{"error": {"code", "message"}}`. `findash.core` never imports
+  from a module.
+- `create_app(settings)` must not open the database; the engine is created
+  in the app lifespan. API tests run the app inside `with TestClient(...)`
+  against a migrated temporary database.
 - Tests use a fresh, migrated SQLite database in pytest's temporary
   directory; never point tests at `.data/`.
 - Before committing, all of these must pass:

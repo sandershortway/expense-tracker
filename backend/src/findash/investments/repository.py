@@ -4,13 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from findash.investments.errors import InstrumentAlreadyExists
 from findash.investments.models import Instrument
-
-
-class InstrumentAlreadyExists(Exception):
-    def __init__(self, isin: str) -> None:
-        super().__init__(f"an instrument with ISIN {isin} already exists")
-        self.isin = isin
 
 
 class InstrumentRepository:
