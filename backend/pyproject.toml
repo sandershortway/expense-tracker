@@ -4,7 +4,10 @@ version = "0.1.0"
 description = "Backend API for the personal financial dashboard."
 requires-python = ">=3.15"
 dependencies = [
+    "alembic>=1.20.0",
     "fastapi>=0.142.4,<0.143",
+    "pydantic-settings>=2.15.0,<2.16",
+    "sqlalchemy>=2.1.4",
     "uvicorn>=0.54.0",
 ]
 
