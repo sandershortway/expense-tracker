@@ -24,6 +24,7 @@ findash = { workspace = true }
 
 [tool.ruff]
 line-length = 79
+src = ["backend/src", "backend/tests"]
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "UP", "W"]
